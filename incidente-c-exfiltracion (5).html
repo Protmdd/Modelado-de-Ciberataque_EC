@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Incidente C — Exfiltración de Datos · Tienda por Departamentos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&family=Newsreader:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#FCFBF8;
+  --panel:rgba(26,26,31,0.03);
+  --panel-2:rgba(26,26,31,0.05);
+  --border:rgba(26,26,31,0.12);
+
+  --teal:#2C4A6E;
+  --teal-dim:rgba(44,74,110,0.08);
+  --teal-border:rgba(44,74,110,0.28);
+
+  --red:#8C2F2F;
+  --red-dim:rgba(140,47,47,0.08);
+  --red-border:rgba(140,47,47,0.30);
+
+  --orange:#A6672E;
+  --orange-dim:rgba(166,103,46,0.10);
+  --orange-border:rgba(166,103,46,0.30);
+
+  --amber:#8C7A2E;
+  --amber-dim:rgba(140,122,46,0.10);
+  --amber-border:rgba(140,122,46,0.30);
+
+  --green:#6B7280;
+  --green-soft:#9CA3AF;
+  --green-dim:rgba(107,114,128,0.08);
+  --green-border:rgba(107,114,128,0.25);
+
+  --text-bright:#1A1A1F;
+  --text:#4A4B52;
+  --text-muted:#8C8D94;
+
+  --font-sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-serif:'Newsreader',Georgia,'Times New Roman',serif;
+  --font-mono:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  font-family:var(--font-sans);
+  background:var(--bg);
+  color:var(--text);
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+}
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(44,74,110,0.028) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(44,74,110,0.028) 1px,transparent 1px);
+  background-size:46px 46px;
+  pointer-events:none;z-index:0;
+}
+::selection{background:var(--teal-dim);color:var(--text-bright);}
+
+/* ICONS */
+svg.icon{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;overflow:visible;}
+svg.icon.filled{fill:currentColor;stroke:none;}
+
+/* PROGRESS */
+.progress{position:fixed;top:0;left:0;height:3px;width:14.28%;background:linear-gradient(90deg,var(--teal),#16283D);z-index:200;transition:width .35s ease;}
+
+/* SLIDES */
+.slide{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+  padding:46px 60px 82px;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.3s ease;
+  z-index:1;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.slide.active{opacity:1;pointer-events:all;}
+
+/* NAV */
+.nav{
+  position:fixed;bottom:0;left:0;right:0;
+  min-height:56px;
+  padding:9px 22px calc(9px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  background:rgba(255,255,255,0.85);
+  border-top:1px solid var(--border);
+  z-index:100;backdrop-filter:blur(10px);
+}
+.nav-btn{
+  display:inline-flex;align-items:center;gap:7px;
+  background:none;border:1px solid var(--teal-border);
+  color:var(--teal);padding:7px 15px;border-radius:7px;
+  cursor:pointer;font-size:12.5px;font-weight:600;font-family:var(--font-sans);
+  transition:background .15s,opacity .15s;
+}
+.nav-btn:hover:not(:disabled){background:var(--teal-dim);}
+.nav-btn:disabled{opacity:.28;cursor:default;}
+.nav-btn .icon{width:14px;height:14px;}
+.nav-mid{display:flex;align-items:center;gap:16px;}
+.dots{display:flex;gap:7px;}
+.dot{width:6px;height:6px;border-radius:50%;background:rgba(15,23,42,0.18);cursor:pointer;transition:background .2s,transform .2s;}
+.dot.on{background:var(--teal);transform:scale(1.7);}
+.counter{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);letter-spacing:.5px;min-width:46px;text-align:center;}
+
+/* SHARED */
+.slide-tag{font-size:11.5px;color:var(--teal);letter-spacing:.4px;margin-bottom:6px;font-weight:600;}
+.slide-head h2{font-family:var(--font-serif);font-size:28px;font-weight:600;color:var(--text-bright);letter-spacing:-.2px;}
+.rule{width:40px;height:2px;background:var(--teal);margin-top:10px;margin-bottom:22px;border-radius:2px;flex-shrink:0;}
+
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px;box-shadow:0 1px 3px rgba(15,23,42,0.05);}
+.card-red{border-color:var(--red-border);background:var(--red-dim);}
+.card-amber{border-color:var(--amber-border);background:var(--amber-dim);}
+.card-orange{border-color:var(--orange-border);background:var(--orange-dim);}
+.card-teal{border-color:var(--teal-border);background:var(--teal-dim);}
+.clabel{font-size:11px;color:var(--text-muted);margin-bottom:8px;letter-spacing:.2px;}
+
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+.b1{background:var(--green-dim);color:var(--green);}
+.b2{background:rgba(156,163,175,.12);color:var(--green-soft);}
+.b3{background:var(--amber-dim);color:var(--amber);}
+.b4{background:var(--orange-dim);color:var(--orange);}
+.b5{background:var(--red-dim);color:var(--red);}
+
+/* ── SLIDE 1 — COVER ── */
+.cover{justify-content:space-between;align-items:flex-start;padding-top:64px;padding-bottom:58px;}
+.cover-top{width:100%;}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:9px;
+  font-size:11px;color:var(--red);font-weight:600;
+  text-transform:uppercase;letter-spacing:.07em;
+  background:transparent;border:1px solid var(--red-border);
+  padding:6px 14px 6px 11px;border-radius:3px;margin-bottom:34px;
+}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--red);animation:pulse 1.6s infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.35;transform:scale(.7);}}
+.cover h1{font-family:var(--font-serif);font-size:64px;font-weight:600;line-height:1.08;color:var(--text-bright);letter-spacing:-.5px;margin-bottom:16px;max-width:720px;}
+.cover h1 em{font-style:italic;font-weight:600;color:var(--teal);}
+.cover .sub{font-family:var(--font-mono);font-size:13px;color:var(--text-muted);letter-spacing:.2px;}
+.cover-rule{width:100%;height:1px;background:var(--border);margin:44px 0 30px;flex-shrink:0;}
+.meta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:36px;width:100%;}
+.meta-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:600;margin-bottom:7px;}
+.meta-value{font-size:14.5px;color:var(--text-bright);font-weight:500;line-height:1.5;}
+
+/* ── SLIDE 2 — EL CASO ── */
+.ditem{
+  text-align:center;padding:15px 8px;display:flex;flex-direction:column;align-items:center;gap:9px;
+  background:var(--panel);border:1px solid var(--border);border-radius:9px;
+}
+.ditem .dicon{width:32px;height:32px;border-radius:8px;background:var(--red-dim);border:1px solid var(--red-border);color:var(--red);display:flex;align-items:center;justify-content:center;padding:7px;}
+.ditem .dn{font-size:11px;font-weight:600;color:var(--text);line-height:1.3;}
+.irow{display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);}
+.irow:last-child{border-bottom:none;}
+.iicon{width:27px;height:27px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--teal);padding:6px;}
+.ititle{font-size:12.5px;font-weight:600;color:var(--text-bright);}
+.idesc{font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.5;}
+
+/* ── SLIDE 3 — ATAQUE ── */
+.flow{display:flex;align-items:center;justify-content:center;margin:18px 0 22px;}
+.fnode{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center;min-width:108px;}
+.fnode.threat{border-color:var(--red-border);background:var(--red-dim);}
+.fnode.target{border-color:var(--amber-border);background:var(--amber-dim);}
+.fnode .nicon{width:26px;height:26px;margin:0 auto 8px;color:var(--teal);}
+.fnode.threat .nicon{color:var(--red);}
+.fnode.target .nicon{color:var(--amber);}
+.fnode .nt{font-size:11.5px;font-weight:700;margin:2px 0 2px;color:var(--text-bright);}
+.fnode .ns{font-size:9.5px;color:var(--text-muted);}
+.farr{display:flex;flex-direction:column;align-items:center;width:64px;flex-shrink:0;}
+.atrack{width:100%;height:2px;border-radius:2px;background:linear-gradient(to right,rgba(140,47,47,.6),rgba(44,74,110,.6));position:relative;}
+.atrack::after{content:'';position:absolute;right:-1px;top:-3px;width:0;height:0;border-style:solid;border-width:4px 0 4px 6px;border-color:transparent transparent transparent var(--teal);}
+.albl{font-size:9px;color:var(--text-muted);text-align:center;margin-top:5px;line-height:1.3;}
+.tip{display:flex;align-items:center;gap:13px;}
+.ticon{width:30px;height:30px;border-radius:8px;background:var(--amber-dim);border:1px solid var(--amber-border);color:var(--amber);display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:6.5px;}
+
+/* ── SLIDE 4 — DIMENSIONES ── */
+.dt{width:100%;border-collapse:collapse;}
+.dt th{font-size:11px;font-weight:600;color:var(--text-muted);padding:0 10px 9px;text-align:left;border-bottom:1px solid var(--border);}
+.dt td{padding:10px 10px;font-size:13px;border-bottom:1px solid rgba(15,23,42,0.06);vertical-align:middle;border-left:3px solid transparent;}
+.dt td:first-child{padding-left:12px;}
+.dt tr:last-child td{border-bottom:none;}
+.dletter{font-size:17px;font-weight:900;}
+.dval{font-size:20px;font-weight:900;text-align:center;}
+.bm{height:5px;background:rgba(15,23,42,0.08);border-radius:3px;overflow:hidden;margin-top:4px;}
+.bf{height:100%;border-radius:3px;}
+
+/* ── SLIDE 5 — PESOS ── */
+.wrow{display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border);}
+.wrow:last-child{border-bottom:none;}
+.wdim{font-size:16px;font-weight:900;color:var(--teal);width:20px;}
+.wname{font-size:12px;color:var(--text);flex:1;}
+.wname small{font-size:10px;color:var(--text-muted);}
+.wpct{font-size:12px;font-weight:700;width:34px;text-align:right;}
+.wbar{flex:1.5;}
+
+/* ── SLIDE 6 — CÁLCULO ── */
+.fblock{background:var(--panel-2);border:1px solid var(--teal-border);border-radius:10px;padding:16px 20px;}
+.fblock .flbl{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-bottom:9px;}
+.fblock .fline{font-size:12.5px;font-family:var(--font-mono);color:var(--text);line-height:1.9;}
+.fblock .fres{margin-top:10px;font-size:21px;font-weight:700;color:var(--teal);font-family:var(--font-mono);}
+.rcircle{width:110px;height:110px;border-radius:50%;flex-shrink:0;background:conic-gradient(var(--orange) 79%,rgba(15,23,42,0.08) 0);display:flex;align-items:center;justify-content:center;}
+.rinner{width:84px;height:84px;border-radius:50%;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.rinner .rv{font-size:21px;font-weight:900;color:var(--orange);line-height:1;font-family:var(--font-mono);}
+.rinner .rd{font-size:9.5px;color:var(--text-muted);}
+.srow{display:flex;gap:5px;margin-top:14px;}
+.spill{flex:1;text-align:center;padding:7px 3px;border-radius:6px;font-size:9.5px;font-weight:600;border:1px solid transparent;line-height:1.4;}
+.spill.on{transform:scale(1.06);border-color:var(--orange);}
+
+/* ── SLIDE 7 — CONCLUSIONES ── */
+.reco{display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);}
+.reco:last-child{border-bottom:none;}
+.rnum{width:24px;flex-shrink:0;font-family:var(--font-serif);font-size:19px;font-weight:600;color:var(--text-muted);line-height:1.4;}
+.verdict-band{display:flex;align-items:center;gap:26px;padding:18px 0;border-top:1px solid var(--text-bright);border-bottom:1px solid var(--border);margin-bottom:22px;}
+.verdict-score{font-family:var(--font-serif);font-size:56px;font-weight:600;color:var(--red);line-height:1;flex-shrink:0;}
+.verdict-level{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--red);margin-bottom:6px;}
+.verdict-copy p{font-size:13px;color:var(--text);line-height:1.6;max-width:560px;}
+.framework-line{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);}
+
+/* ── RESPONSIVE ── */
+@media (max-width:900px){
+  .slide{padding:58px 22px 96px;}
+  .g2,.g3{grid-template-columns:1fr;}
+  .g4{grid-template-columns:repeat(2,1fr);}
+  .cover h1{font-size:36px;letter-spacing:-.5px;}
+  .cover .sub{font-size:12px;}
+  .meta-grid{grid-template-columns:1fr;gap:18px;}
+  .slide-head h2{font-size:21px;}
+  .flow{flex-direction:column;gap:6px;}
+  .fnode{width:100%;max-width:280px;}
+  .farr{flex-direction:row;width:auto;height:30px;gap:10px;}
+  .atrack{width:2px;height:100%;background:linear-gradient(to bottom,rgba(140,47,47,.6),rgba(44,74,110,.6));}
+  .atrack::after{right:-3px;top:auto;bottom:-1px;border-width:6px 4px 0 4px;border-color:var(--teal) transparent transparent transparent;}
+  .albl{margin-top:0;text-align:left;}
+  .nav{padding-left:14px;padding-right:14px;}
+  .nav-btn span.btxt{display:none;}
+  .counter{min-width:auto;}
+  .chart-radar{height:220px !important;}
+  .chart-pie{height:250px !important;}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ICON SPRITE -->
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="i-id" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2"/><circle cx="8" cy="11" r="2.1"/><path d="M5.3 16.2c.3-1.6 1.4-2.5 2.7-2.5s2.4.9 2.7 2.5"/><line x1="13.2" y1="9" x2="19" y2="9"/><line x1="13.2" y1="12.4" x2="19" y2="12.4"/></symbol>
+<symbol id="i-card" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="5.5" y1="14.6" x2="9.5" y2="14.6"/><line x1="5.5" y1="16.7" x2="8" y2="16.7"/></symbol>
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M3.2 6.3 12 13 20.8 6.3"/></symbol>
+<symbol id="i-bag" viewBox="0 0 24 24"><path d="M6.5 8h11l-.9 11.2a1.6 1.6 0 0 1-1.6 1.4H9a1.6 1.6 0 0 1-1.6-1.4L6.5 8z"/><path d="M9 8V6.6a3 3 0 0 1 6 0V8"/></symbol>
+<symbol id="i-scale" viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="20"/><line x1="5" y1="7" x2="19" y2="7"/><path d="M5 7 2.2 12.4a2.9 2.9 0 0 0 5.6 0L5 7z"/><path d="M19 7l-2.8 5.4a2.9 2.9 0 0 0 5.6 0L19 7z"/><line x1="8.5" y1="20" x2="15.5" y2="20"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="8.7" cy="8.2" r="3"/><path d="M3.3 19c.4-3.4 2.6-5.4 5.4-5.4s5 2 5.4 5.4"/><circle cx="17" cy="9.4" r="2.3"/><path d="M14.7 19c.3-2.4 1.7-4 3.7-4.3"/></symbol>
+<symbol id="i-news" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="1.2"/><line x1="6" y1="8.3" x2="14.5" y2="8.3"/><line x1="6" y1="11.2" x2="18" y2="11.2"/><line x1="6" y1="13.9" x2="18" y2="13.9"/><line x1="6" y1="16.6" x2="12.5" y2="16.6"/></symbol>
+<symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.4a4 4 0 1 0-5.4 5.4L4 17.1l2.9 2.9 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.8 2.8-2-2 2.9-2.7z"/></symbol>
+<symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><line x1="12" y1="1.8" x2="12" y2="4.2"/><line x1="12" y1="19.8" x2="12" y2="22.2"/><line x1="1.8" y1="12" x2="4.2" y2="12"/><line x1="19.8" y1="12" x2="22.2" y2="12"/></symbol>
+<symbol id="i-bulb" viewBox="0 0 24 24"><circle cx="12" cy="10" r="5.2"/><line x1="12" y1="15.2" x2="12" y2="17.6"/><line x1="9.6" y1="20" x2="14.4" y2="20"/><line x1="10.2" y1="22" x2="13.8" y2="22"/></symbol>
+<symbol id="i-hood" viewBox="0 0 24 24"><path d="M12 2.6c-3.6 0-6.4 2.9-6.4 6.6 0 2.1.9 3.7 1.9 4.9C6 15.6 4.6 17.6 3.7 20.3c2.6 1 5.4 1.5 8.3 1.5s5.7-.5 8.3-1.5c-.9-2.7-2.3-4.7-3.8-6.2 1-1.2 1.9-2.8 1.9-4.9 0-3.7-2.8-6.6-6.4-6.6z"/></symbol>
+<symbol id="i-network" viewBox="0 0 24 24"><circle cx="12" cy="4.6" r="2"/><circle cx="5" cy="18.4" r="2"/><circle cx="19" cy="18.4" r="2"/><line x1="12" y1="6.6" x2="6.3" y2="16.8"/><line x1="12" y1="6.6" x2="17.7" y2="16.8"/><line x1="7" y1="18.4" x2="17" y2="18.4" stroke-dasharray="2 2.2"/></symbol>
+<symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.2" ry="2.4"/><path d="M4.8 5.5v13c0 1.3 3.2 2.4 7.2 2.4s7.2-1.1 7.2-2.4v-13"/><path d="M4.8 12c0 1.3 3.2 2.4 7.2 2.4s7.2-1.1 7.2-2.4"/></symbol>
+<symbol id="i-exfil" viewBox="0 0 24 24"><rect x="2.5" y="9.6" width="11" height="11" rx="1.4"/><line x1="5" y1="12.4" x2="10.5" y2="12.4"/><line x1="5" y1="15.1" x2="10.5" y2="15.1"/><circle cx="5" cy="17.8" r=".7" fill="currentColor" stroke="none"/><path d="M15 9.6 21 3.6"/><path d="M16.3 3.6h4.7v4.7"/></symbol>
+<symbol id="i-building" viewBox="0 0 24 24"><rect x="4" y="3.5" width="10" height="17" rx="1"/><rect x="14" y="9" width="6" height="11.5" rx="1"/><line x1="6.4" y1="7" x2="8.2" y2="7"/><line x1="9.8" y1="7" x2="11.6" y2="7"/><line x1="6.4" y1="10.4" x2="8.2" y2="10.4"/><line x1="9.8" y1="10.4" x2="11.6" y2="10.4"/><line x1="6.4" y1="13.8" x2="8.2" y2="13.8"/><line x1="9.8" y1="13.8" x2="11.6" y2="13.8"/><line x1="16.4" y1="12.2" x2="18" y2="12.2"/><line x1="16.4" y1="15.4" x2="18" y2="15.4"/></symbol>
+<symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 16a8 8 0 0 1 16 0"/><line x1="12" y1="16" x2="16.2" y2="10.8"/><circle cx="12" cy="16" r="1.1" fill="currentColor" stroke="none"/><line x1="4" y1="16" x2="2.4" y2="16"/><line x1="20" y1="16" x2="21.6" y2="16"/></symbol>
+<symbol id="i-chevron-left" viewBox="0 0 24 24"><polyline points="15,4 7,12 15,20"/></symbol>
+<symbol id="i-chevron-right" viewBox="0 0 24 24"><polyline points="9,4 17,12 9,20"/></symbol>
+</defs>
+</svg>
+
+<div class="progress" id="progress"></div>
+
+<!-- S1 COVER -->
+<div class="slide cover active" id="s1">
+  <div class="cover-top">
+    <div class="eyebrow"><span class="pulse"></span>Incidente C confirmado · Exfiltración de datos</div>
+    <h1>Modelado de<br><em>Ciberataque</em></h1>
+    <p class="sub">Cálculo del Impacto Ponderado · Metodología C-I-D-O-E-R</p>
+  </div>
+  <div style="width:100%;">
+    <div class="cover-rule"></div>
+    <div class="meta-grid">
+      <div>
+        <div class="meta-label">Organización</div>
+        <div class="meta-value">Tienda por Departamentos</div>
+      </div>
+      <div>
+        <div class="meta-label">Marco legal</div>
+        <div class="meta-value">Ley 29733 — Protección de datos personales, Perú</div>
+      </div>
+      <div>
+        <div class="meta-label">Escala utilizada</div>
+        <div class="meta-value">1 Muy bajo → 5 Crítico</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S2 EL CASO -->
+<div class="slide" id="s2">
+  <div class="slide-tag">El caso</div>
+  <div class="slide-head"><h2>¿Qué ocurrió?</h2></div>
+  <div class="rule"></div>
+  <div class="g2" style="flex:1;align-items:start;gap:20px;">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card card-red">
+        <div class="clabel">Situación confirmada</div>
+        <p style="font-size:13.5px;line-height:1.65;">La tienda confirmó la <strong style="color:var(--text-bright);">exposición no autorizada</strong> de datos personales de sus clientes. Un agente externo extrajo registros sensibles desde las bases de datos de clientes y pagos sin que los sistemas fueran interrumpidos.</p>
+      </div>
+      <div class="card">
+        <div class="clabel" style="margin-bottom:12px;">Datos comprometidos</div>
+        <div class="g4">
+          <div class="ditem"><span class="dicon"><svg class="icon"><use href="#i-id"/></svg></span><div class="dn">Nombre / DNI</div></div>
+          <div class="ditem"><span class="dicon"><svg class="icon"><use href="#i-card"/></svg></span><div class="dn">Tarjetas crédito</div></div>
+          <div class="ditem"><span class="dicon"><svg class="icon"><use href="#i-mail"/></svg></span><div class="dn">Dirección / correo</div></div>
+          <div class="ditem"><span class="dicon"><svg class="icon"><use href="#i-bag"/></svg></span><div class="dn">Historial compras</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="height:100%;">
+      <div class="clabel" style="margin-bottom:12px;">Impactos en la organización</div>
+      <div class="irow"><span class="iicon"><svg class="icon"><use href="#i-scale"/></svg></span><div><div class="ititle">Multas regulatorias</div><div class="idesc">Ley 29733 Perú — hasta 100 UIT por infracción muy grave</div></div></div>
+      <div class="irow"><span class="iicon"><svg class="icon"><use href="#i-users"/></svg></span><div><div class="ititle">Fuga de clientes</div><div class="idesc">Cancelación de tarjetas de fidelidad; pérdida de base activa</div></div></div>
+      <div class="irow"><span class="iicon"><svg class="icon"><use href="#i-news"/></svg></span><div><div class="ititle">Crisis de reputación</div><div class="idesc">Cobertura mediática negativa; daño permanente de marca</div></div></div>
+      <div class="irow"><span class="iicon"><svg class="icon"><use href="#i-wrench"/></svg></span><div><div class="ititle">Costos de remediación</div><div class="idesc">Forense · notificaciones · parches · refuerzo de infraestructura</div></div></div>
+      <div class="irow"><span class="iicon"><svg class="icon"><use href="#i-target"/></svg></span><div><div class="ititle">Fraude financiero a clientes</div><div class="idesc">Datos de pago en dark web → phishing masivo y robo de identidad</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- S3 ATAQUE -->
+<div class="slide" id="s3">
+  <div class="slide-tag">El ataque</div>
+  <div class="slide-head"><h2>Anatomía de la Exfiltración</h2></div>
+  <div class="rule"></div>
+  <div class="flow">
+    <div class="fnode threat"><span class="nicon"><svg class="icon filled"><use href="#i-hood"/></svg></span><div class="nt">Atacante</div><div class="ns">Agente externo</div></div>
+    <div class="farr"><div class="atrack"></div><div class="albl">Intrusión<br>perimetral</div></div>
+    <div class="fnode"><span class="nicon"><svg class="icon"><use href="#i-network"/></svg></span><div class="nt">Red / API</div><div class="ns">Vulnerabilidad explotada</div></div>
+    <div class="farr"><div class="atrack"></div><div class="albl">Acceso no<br>autorizado</div></div>
+    <div class="fnode target"><span class="nicon"><svg class="icon"><use href="#i-database"/></svg></span><div class="nt">Base de datos</div><div class="ns">Clientes &amp; pagos</div></div>
+    <div class="farr"><div class="atrack"></div><div class="albl">Copia masiva<br>de registros</div></div>
+    <div class="fnode threat"><span class="nicon"><svg class="icon"><use href="#i-exfil"/></svg></span><div class="nt">Servidor C&amp;C</div><div class="ns">Destino externo</div></div>
+  </div>
+  <div class="g3" style="margin-bottom:14px;">
+    <div class="card">
+      <div class="clabel">Tipo de ataque</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text-bright);margin-bottom:3px;">Exfiltración de datos</div>
+      <div style="font-size:11px;color:var(--text-muted);">Copia y envío externo de PII + datos financieros sin destruir sistemas</div>
+    </div>
+    <div class="card">
+      <div class="clabel">Vector probable</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text-bright);margin-bottom:3px;">API sin autenticación robusta</div>
+      <div style="font-size:11px;color:var(--text-muted);">Inyección SQL o credenciales comprometidas por phishing previo</div>
+    </div>
+    <div class="card">
+      <div class="clabel">Objetivo del atacante</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text-bright);margin-bottom:3px;">Monetización</div>
+      <div style="font-size:11px;color:var(--text-muted);">Venta en dark web · fraude financiero · phishing masivo a clientes</div>
+    </div>
+  </div>
+  <div class="card card-amber tip">
+    <span class="ticon"><svg class="icon"><use href="#i-bulb"/></svg></span>
+    <div style="font-size:13px;">
+      <strong style="color:var(--amber);">Clave:</strong> disponibilidad e integridad <strong style="color:var(--text-bright);">no se ven afectadas</strong> — los sistemas siguen en pie y los datos no fueron alterados. Esto explica los valores bajos en D e I.
+    </div>
+  </div>
+</div>
+
+<!-- S4 DIMENSIONES -->
+<div class="slide" id="s4">
+  <div class="slide-tag">Paso 2 — Dimensiones</div>
+  <div class="slide-head"><h2>Valoración C-I-D-O-E-R</h2></div>
+  <div class="rule"></div>
+  <div class="g2" style="flex:1;align-items:start;gap:22px;">
+    <div>
+      <table class="dt">
+        <thead>
+          <tr>
+            <th>Dim.</th><th>Descripción</th>
+            <th style="text-align:center;">Valor</th><th>Nivel</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="border-left-color:var(--red);"><span class="dletter" style="color:var(--red);">C</span></td>
+            <td>
+              <div style="font-size:12px;font-weight:600;color:var(--text-bright);">Confidencialidad</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Datos PII + financieros totalmente expuestos</div>
+              <div class="bm"><div class="bf" style="width:100%;background:var(--red);"></div></div>
+            </td>
+            <td class="dval" style="color:var(--red);">5</td>
+            <td><span class="badge b5">Crítico</span></td>
+          </tr>
+          <tr>
+            <td style="border-left-color:var(--green);"><span class="dletter" style="color:var(--green);">I</span></td>
+            <td>
+              <div style="font-size:12px;font-weight:600;color:var(--text-bright);">Integridad</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Datos copiados, no alterados</div>
+              <div class="bm"><div class="bf" style="width:40%;background:var(--green);"></div></div>
+            </td>
+            <td class="dval" style="color:var(--green);">2</td>
+            <td><span class="badge b2">Bajo</span></td>
+          </tr>
+          <tr>
+            <td style="border-left-color:var(--green);"><span class="dletter" style="color:var(--green);">D</span></td>
+            <td>
+              <div style="font-size:12px;font-weight:600;color:var(--text-bright);">Disponibilidad</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Sistemas siguen operativos</div>
+              <div class="bm"><div class="bf" style="width:40%;background:var(--green);"></div></div>
+            </td>
+            <td class="dval" style="color:var(--green);">2</td>
+            <td><span class="badge b2">Bajo</span></td>
+          </tr>
+          <tr>
+            <td style="border-left-color:var(--amber);"><span class="dletter" style="color:var(--amber);">O</span></td>
+            <td>
+              <div style="font-size:12px;font-weight:600;color:var(--text-bright);">Operacionalidad</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Interrupción parcial por respuesta al incidente</div>
+              <div class="bm"><div class="bf" style="width:60%;background:var(--amber);"></div></div>
+            </td>
+            <td class="dval" style="color:var(--amber);">3</td>
+            <td><span class="badge b3">Medio</span></td>
+          </tr>
+          <tr>
+            <td style="border-left-color:var(--orange);"><span class="dletter" style="color:var(--orange);">E</span></td>
+            <td>
+              <div style="font-size:12px;font-weight:600;color:var(--text-bright);">Económico / Legal</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Multas, demandas, pérdida de ingresos</div>
+              <div class="bm"><div class="bf" style="width:80%;background:var(--orange);"></div></div>
+            </td>
+            <td class="dval" style="color:var(--orange);">4</td>
+            <td><span class="badge b4">Alto</span></td>
+          </tr>
+          <tr>
+            <td style="border-left-color:var(--red);"><span class="dletter" style="color:var(--red);">R</span></td>
+            <td>
+              <div style="font-size:12px;font-weight:600;color:var(--text-bright);">Reputación</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Daño severo a la marca del retailer</div>
+              <div class="bm"><div class="bf" style="width:100%;background:var(--red);"></div></div>
+            </td>
+            <td class="dval" style="color:var(--red);">5</td>
+            <td><span class="badge b5">Crítico</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="chart-radar" style="height:268px;position:relative;">
+        <canvas id="radarChart"></canvas>
+      </div>
+      <div class="card card-teal">
+        <div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:4px;">C y R dominan el impacto</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">La exfiltración ataca directamente la privacidad del cliente y la confianza de marca — no la operación del negocio.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S5 PESOS -->
+<div class="slide" id="s5">
+  <div class="slide-tag">Paso 3 — Ponderados</div>
+  <div class="slide-head"><h2>Distribución de Pesos</h2></div>
+  <div class="rule"></div>
+  <div class="g2" style="flex:1;align-items:start;gap:24px;">
+    <div style="display:flex;flex-direction:column;padding-top:4px;">
+      <div class="wrow">
+        <div class="wdim" style="color:var(--red);">C</div>
+        <div class="wname">Confidencialidad<br><small>Eje principal: PII + datos de tarjetas</small></div>
+        <div class="wpct" style="color:var(--red);">30%</div>
+        <div class="wbar"><div class="bm" style="height:6px;"><div class="bf" style="width:100%;background:var(--red);"></div></div></div>
+      </div>
+      <div class="wrow">
+        <div class="wdim" style="color:var(--red);">R</div>
+        <div class="wname">Reputación<br><small>Retail vive de la confianza; daño permanente</small></div>
+        <div class="wpct" style="color:var(--red);">20%</div>
+        <div class="wbar"><div class="bm" style="height:6px;"><div class="bf" style="width:67%;background:var(--red);opacity:.7;"></div></div></div>
+      </div>
+      <div class="wrow">
+        <div class="wdim" style="color:var(--orange);">E</div>
+        <div class="wname">Económico / Legal<br><small>Multas Ley 29733 + demandas civiles</small></div>
+        <div class="wpct" style="color:var(--orange);">15%</div>
+        <div class="wbar"><div class="bm" style="height:6px;"><div class="bf" style="width:50%;background:var(--orange);"></div></div></div>
+      </div>
+      <div class="wrow">
+        <div class="wdim" style="color:var(--amber);">O</div>
+        <div class="wname">Operacionalidad<br><small>Forense + contención + notificaciones</small></div>
+        <div class="wpct" style="color:var(--amber);">15%</div>
+        <div class="wbar"><div class="bm" style="height:6px;"><div class="bf" style="width:50%;background:var(--amber);"></div></div></div>
+      </div>
+      <div class="wrow">
+        <div class="wdim" style="color:var(--green);">I</div>
+        <div class="wname">Integridad<br><small>Datos no alterados — impacto directo bajo</small></div>
+        <div class="wpct" style="color:var(--green);">10%</div>
+        <div class="wbar"><div class="bm" style="height:6px;"><div class="bf" style="width:33%;background:var(--green);"></div></div></div>
+      </div>
+      <div class="wrow">
+        <div class="wdim" style="color:var(--green);">D</div>
+        <div class="wname">Disponibilidad<br><small>Sin caída de servicios ni interrupción</small></div>
+        <div class="wpct" style="color:var(--green);">10%</div>
+        <div class="wbar"><div class="bm" style="height:6px;"><div class="bf" style="width:33%;background:var(--green);opacity:.7;"></div></div></div>
+      </div>
+      <div style="margin-top:14px;font-size:12px;color:var(--text-muted);">
+        Total acumulado: <strong style="color:var(--teal);">100%</strong>
+      </div>
+    </div>
+    <div class="chart-pie" style="height:320px;position:relative;">
+      <canvas id="pieChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- S6 CÁLCULO -->
+<div class="slide" id="s6">
+  <div class="slide-tag">Paso 4 — Cálculo</div>
+  <div class="slide-head"><h2>Impacto Ponderado</h2></div>
+  <div class="rule"></div>
+  <div class="g2" style="flex:1;align-items:start;gap:22px;">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="fblock">
+        <div class="flbl">IP = Σ (Peso_i × Valor_i)</div>
+        <div class="fline">
+          IP = (0.30 × <span style="color:var(--red);font-weight:700;">5</span>) + (0.10 × <span style="color:var(--green);font-weight:700;">2</span>) + (0.10 × <span style="color:var(--green);font-weight:700;">2</span>)<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;+ (0.15 × <span style="color:var(--amber);font-weight:700;">3</span>) + (0.15 × <span style="color:var(--orange);font-weight:700;">4</span>) + (0.20 × <span style="color:var(--red);font-weight:700;">5</span>)<br><br>
+          IP = 1.50 + 0.20 + 0.20 + 0.45 + 0.60 + 1.00
+        </div>
+        <div class="fres">IP = 3.95 / 5.00</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:18px;">
+        <div class="rcircle">
+          <div class="rinner">
+            <div class="rv">3.95</div>
+            <div class="rd">/ 5.00</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;">Resultado final</div>
+          <div style="font-size:34px;font-weight:900;color:var(--orange);line-height:1;">ALTO</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Afectación importante<br>para la organización</div>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="spill" style="background:var(--green-dim);color:var(--green);">1.0–1.8<br>Muy bajo</div>
+        <div class="spill" style="background:rgba(156,163,175,.10);color:var(--green-soft);">1.8–2.6<br>Bajo</div>
+        <div class="spill" style="background:var(--amber-dim);color:var(--amber);">2.6–3.4<br>Medio</div>
+        <div class="spill on" style="background:rgba(166,103,46,.20);color:var(--orange);">3.4–4.2<br>Alto ←</div>
+        <div class="spill" style="background:var(--red-dim);color:var(--red);">4.2–5.0<br>Crítico</div>
+      </div>
+    </div>
+    <div class="card" style="height:100%;display:flex;flex-direction:column;">
+      <div class="clabel" style="margin-bottom:10px;">Contribución por dimensión</div>
+      <div style="flex:1;position:relative;min-height:220px;">
+        <canvas id="barChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S7 CONCLUSIONES -->
+<div class="slide" id="s7">
+  <div class="slide-tag">Conclusiones</div>
+  <div class="slide-head"><h2>Resumen y Recomendaciones</h2></div>
+  <div class="rule"></div>
+
+  <div class="verdict-band">
+    <div class="verdict-score">3.95</div>
+    <div class="verdict-copy">
+      <div class="verdict-level">Impacto Alto</div>
+      <p>Confidencialidad y Reputación concentran el mayor peso del resultado. La exfiltración no destruye la operación — la erosiona lentamente, a través de la pérdida de confianza del cliente.</p>
+    </div>
+  </div>
+
+  <div class="g2" style="flex:1;align-items:start;gap:32px;">
+    <div>
+      <div class="clabel" style="margin-bottom:8px;">¿Por qué no llega a "Crítico"?</div>
+      <p style="font-size:13px;color:var(--text);line-height:1.75;">
+        Disponibilidad <strong style="color:var(--text-bright);">(2)</strong> e Integridad <strong style="color:var(--text-bright);">(2)</strong> frenan el puntaje total: los sistemas siguen en pie y los datos no fueron borrados ni alterados. El daño es reputacional y regulatorio — no operativo inmediato.
+      </p>
+      <div class="framework-line">
+        <div class="meta-label">Marco normativo aplicable</div>
+        <div class="meta-value">Ley 29733 · NIST CSF · PCI-DSS</div>
+      </div>
+    </div>
+    <div>
+      <div class="clabel" style="margin-bottom:10px;">Acciones prioritarias post-incidente</div>
+      <div class="reco">
+        <div class="rnum">01</div>
+        <div><div class="ititle">Notificación obligatoria</div><div class="idesc">Notificar a INDECOPI y clientes afectados en 72h · Ley 29733</div></div>
+      </div>
+      <div class="reco">
+        <div class="rnum">02</div>
+        <div><div class="ititle">Contención y análisis forense</div><div class="idesc">Cerrar vectores de acceso · determinar alcance exacto de la brecha</div></div>
+      </div>
+      <div class="reco">
+        <div class="rnum">03</div>
+        <div><div class="ititle">Gestión de crisis reputacional</div><div class="idesc">Comunicado oficial · canal de atención al cliente · monitoreo de prensa</div></div>
+      </div>
+      <div class="reco">
+        <div class="rnum">04</div>
+        <div><div class="ititle">Cifrado de datos en reposo</div><div class="idesc">AES-256 · tokenización de datos de pago · cumplimiento PCI-DSS</div></div>
+      </div>
+      <div class="reco">
+        <div class="rnum">05</div>
+        <div><div class="ititle">Revisión de controles de acceso</div><div class="idesc">MFA obligatorio · principio de mínimo privilegio · monitoreo de APIs</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NAVIGATION -->
+<div class="nav">
+  <button class="nav-btn" id="prevBtn" onclick="go(-1)" aria-label="Diapositiva anterior"><svg class="icon"><use href="#i-chevron-left"/></svg><span class="btxt">Anterior</span></button>
+  <div class="nav-mid">
+    <div class="dots" id="dots"></div>
+    <span class="counter" id="counter">01 / 07</span>
+  </div>
+  <button class="nav-btn" id="nextBtn" onclick="go(1)" aria-label="Diapositiva siguiente"><span class="btxt">Siguiente</span><svg class="icon"><use href="#i-chevron-right"/></svg></button>
+</div>
+
+<script>
+const N = 7;
+let cur = 1;
+const built = {};
+
+const dotsEl = document.getElementById('dots');
+for (let i = 1; i <= N; i++) {
+  const d = document.createElement('div');
+  d.className = 'dot' + (i === 1 ? ' on' : '');
+  d.onclick = () => goTo(i);
+  dotsEl.appendChild(d);
+}
+
+function pad(n){ return n < 10 ? '0' + n : '' + n; }
+
+function updateChrome(){
+  document.getElementById('progress').style.width = (cur / N * 100) + '%';
+  document.getElementById('counter').textContent = pad(cur) + ' / ' + pad(N);
+  document.getElementById('prevBtn').disabled = cur === 1;
+  document.getElementById('nextBtn').disabled = cur === N;
+}
+
+function go(d) { goTo(cur + d); }
+function goTo(n) {
+  if (n < 1 || n > N || n === cur) return;
+  document.getElementById('s' + cur).classList.remove('active');
+  document.querySelectorAll('.dot')[cur - 1].classList.remove('on');
+  cur = n;
+  document.getElementById('s' + cur).classList.add('active');
+  document.querySelectorAll('.dot')[cur - 1].classList.add('on');
+  updateChrome();
+  if (!built[cur]) { built[cur] = true; setTimeout(() => buildChart(cur), 90); }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   go(-1);
+});
+
+updateChrome();
+
+function buildChart(s) {
+  if (s === 4) {
+    new Chart(document.getElementById('radarChart'), {
+      type: 'radar',
+      data: {
+        labels: [['C','Confidencialidad'],['I','Integridad'],['D','Disponibilidad'],['O','Operacionalidad'],['E','Económico'],['R','Reputación']],
+        datasets: [{
+          data: [5, 2, 2, 3, 4, 5],
+          backgroundColor: 'rgba(44,74,110,0.10)',
+          borderColor: 'rgba(44,74,110,0.85)',
+          borderWidth: 2,
+          pointBackgroundColor: ['#8C2F2F','#6B7280','rgba(107,114,128,0.55)','#8C7A2E','#A6672E','rgba(140,47,47,0.6)'],
+          pointBorderColor: 'transparent',
+          pointRadius: 5,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          r: {
+            min: 0, max: 5,
+            ticks: { stepSize: 1, color: '#8C8D94', backdropColor: 'transparent', font: { size: 9 } },
+            grid: { color: 'rgba(15,23,42,0.06)' },
+            angleLines: { color: 'rgba(15,23,42,0.06)' },
+            pointLabels: { color: '#4A4B52', font: { size: 10, weight: '600' } }
+          }
+        },
+        plugins: { legend: { display: false } },
+        animation: { duration: 700 }
+      }
+    });
+  }
+
+  if (s === 5) {
+    new Chart(document.getElementById('pieChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['C — Confidencialidad (30%)','R — Reputación (20%)','E — Económico (15%)','O — Operacionalidad (15%)','I — Integridad (10%)','D — Disponibilidad (10%)'],
+        datasets: [{
+          data: [30, 20, 15, 15, 10, 10],
+          backgroundColor: [
+            'rgba(140,47,47,0.9)','rgba(140,47,47,0.5)',
+            'rgba(166,103,46,0.9)','rgba(140,122,46,0.85)',
+            'rgba(107,114,128,0.85)','rgba(107,114,128,0.45)'
+          ],
+          borderColor: '#FCFBF8', borderWidth: 3, hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '54%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#4A4B52', font: { size: 10 }, padding: 10, boxWidth: 12 }
+          }
+        },
+        animation: { duration: 700 }
+      }
+    });
+  }
+
+  if (s === 6) {
+    new Chart(document.getElementById('barChart'), {
+      type: 'bar',
+      data: {
+        labels: ['C', 'R', 'E', 'O', 'I', 'D'],
+        datasets: [{
+          data: [1.50, 1.00, 0.60, 0.45, 0.20, 0.20],
+          backgroundColor: [
+            'rgba(140,47,47,0.9)','rgba(140,47,47,0.55)',
+            'rgba(166,103,46,0.9)','rgba(140,122,46,0.85)',
+            'rgba(107,114,128,0.85)','rgba(107,114,128,0.5)'
+          ],
+          borderRadius: 5, borderSkipped: false,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => ` ${c.raw} pts` } }
+        },
+        scales: {
+          x: {
+            max: 1.65,
+            grid: { color: 'rgba(15,23,42,0.06)' },
+            ticks: { color: '#8C8D94', font: { size: 10 } },
+            title: { display: true, text: 'Peso × Valor', color: '#8C8D94', font: { size: 10 } }
+          },
+          y: {
+            grid: { display: false },
+            ticks: {
+              color: (ctx) => ['#8C2F2F','#8C2F2F','#A6672E','#8C7A2E','#6B7280','#6B7280'][ctx.index],
+              font: { size: 14, weight: '900' }
+            }
+          }
+        },
+        animation: { duration: 700 }
+      }
+    });
+  }
+}
+</script>
+</body>
+</html>
